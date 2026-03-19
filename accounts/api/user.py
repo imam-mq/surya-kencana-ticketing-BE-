@@ -101,14 +101,34 @@ def user_jadwal_search(request):
     asal = request.GET.get("asal", "").strip()
     tujuan = request.GET.get("tujuan", "").strip()
     date_str = request.GET.get("tanggal", "").strip()
-    qs = Jadwal.objects.select_related("bus").filter(status="active")
+
+    #pengambilan data tiket
+    qs = Jadwal.objects.select_related("bus").prefetch_related("tiket_set").filter(status="active")
     if asal: qs = qs.filter(asal__icontains=asal)
     if tujuan: qs = qs.filter(tujuan__icontains=tujuan)
-    if date_str:
-        dv = _parse_date(date_str)
+    if date_str: 
+        dv = _parse_date(date_str) 
         if dv: qs = qs.filter(waktu_keberangkatan__date=dv)
     qs = qs.order_by("waktu_keberangkatan")
-    return JsonResponse(ScheduleOutSerializer(qs, many=True).data, safe=False)
+
+    # pengambilan hasil sisa kursi
+    results = []
+    for sch in qs:
+        total_terjual = sch.tiket_set.count()
+        kapasitas_bus = sch.bus.total_kursi()
+        sisa_kursi  = kapasitas_bus - total_terjual
+
+        #mengambil DTO
+        data = ScheduleOutSerializer(sch).data
+
+        #respon data
+        data['sisa_kursi'] = sisa_kursi
+        data['is_full'] = sisa_kursi <= 0
+
+        results.append(data)
+
+    return JsonResponse(results, safe=False)
+
 
 @csrf_exempt
 def user_jadwal_seats(request, pk):

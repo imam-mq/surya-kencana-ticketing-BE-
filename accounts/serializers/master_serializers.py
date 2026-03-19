@@ -23,7 +23,7 @@ class ScheduleOutSerializer(serializers.ModelSerializer):
     def get_terjual(self, obj):
         return Tiket.objects.filter(
             jadwal=obj,
-            pemesanan__status_pembayaran__in=['paid', 'pending']
+            pemesanan__status_pembayaran__in=['paid', 'pending', 'success', 'settlement', 'capture']
         ).count()
 
 class ScheduleInSerializer(serializers.ModelSerializer):
