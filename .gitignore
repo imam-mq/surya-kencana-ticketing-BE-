@@ -1,0 +1,57 @@
+# GLOBAL & SYSTEM
+
+.DS_Store
+
+Thumbs.db
+
+.vscode/
+
+.idea/
+
+# BACKEND (Django/Python)
+
+env/
+
+venv/
+
+.venv/
+
+env.bak/
+
+venv.bak/
+
+
+
+# Bytecode Python
+
+__pycache__/
+
+*.pyc
+
+
+
+# Database
+
+*.sqlite3
+
+db.sqlite3
+
+db.sqlite3-journal
+
+.env
+
+
+
+# Media
+
+media/
+
+bukti_setoran/
+
+
+
+# Binaries
+
+*.exe
+
+ngrok.exe
