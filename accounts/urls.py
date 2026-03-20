@@ -59,4 +59,6 @@ urlpatterns = [
     # ORDER & WEBHOOK
     path('user/order/create/', user.user_create_order, name='user-create-order'),
     path('midtrans-webhook/', csrf_exempt(user.midtrans_webhook), name='midtrans_webhook'),
+    path('check-payment/<int:order_id>/', user.check_payment_status, name='check_payment_status'),
+    path('order/<int:order_id>/cancel/', user.cancel_order, name='cancel_order'),
 ]

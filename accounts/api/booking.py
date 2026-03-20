@@ -98,3 +98,16 @@ def create_booking_agent(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+    
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def chek_payment_status(request, order_id):
+    try:
+        pemesanan = Pemesanan.objects.get(id=order_id, pembeli=request.user)
+        return Response({
+            'status': pemesanan.status_pembayaran,
+            'order_id': pemesanan.id
+        })
+    except Pemesanan.DoesNotExist:
+        return Response({'error': 'Pesanan tidak ditemukan'}, status=404)

@@ -269,10 +269,13 @@ def midtrans_webhook(request):
             pemesanan.status_pembayaran = 'success'
         elif status_transaksi == 'pending':
             pemesanan.status_pembayaran = 'pending'
-        elif status_transaksi == 'expire':
+        elif status_transaksi in ['expire', 'expired']:
             pemesanan.status_pembayaran = 'expired'
+            # hapus tiket jika gagal pemesanan / tidak jadi bayar
+            Tiket.objects.filter(pemesanan=pemesanan).delete()
         elif status_transaksi in ['cancel', 'deny', 'failure']:
             pemesanan.status_pembayaran = 'failed'
+            Tiket.objects.filter(pemesanan=pemesanan).delete()
             
         pemesanan.save()
         print(f"Update Berhasil: {order_id_db} -> {pemesanan.status_pembayaran}")
@@ -282,3 +285,72 @@ def midtrans_webhook(request):
         return JsonResponse({'status': 'Not Found'}, status=404)
     except Exception as e:
         return JsonResponse({'status': str(e)}, status=500)
+
+
+@csrf_exempt
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_payment_status(request, order_id):
+    try:
+        # ambil data yang sudah relasi antara kolom jadwal dan jadwablbus 
+        pemesanan = Pemesanan.objects.select_related('jadwal', 'jadwal__bus').get(id=order_id, pembeli=request.user)
+        
+        # get daftar tiket penumpang
+        tikets = Tiket.objects.filter(pemesanan=pemesanan)
+        penumpang_list = []
+        for t in tikets:
+            penumpang_list.append({
+                "nama": t.nama_penumpang,
+                "kursi": t.nomor_kursi,
+                "kode_tiket": t.kode_tiket
+            })
+
+        waktu_bayar = pemesanan.dibuat_pada.strftime("%Y-%m-%d %H:%M:%S")
+        waktu_berangkat = pemesanan.jadwal.waktu_keberangkatan.strftime("%Y-%m-%d %H:%M:%S")
+
+        # respon data
+        response_data = {
+            "success": True,
+            "status_pembayaran": pemesanan.status_pembayaran,
+            "data": {
+                "order_id": f"SK-{pemesanan.id}",
+                "total_bayar": int(pemesanan.harga_akhir),
+                "metode": pemesanan.metode_pembayaran,
+                "waktu_bayar": waktu_bayar,
+                "penumpang": penumpang_list,
+                "perjalanan": {
+                    "asal": pemesanan.jadwal.asal,
+                    "tujuan": pemesanan.jadwal.tujuan,
+                    "bus": str(pemesanan.jadwal.bus),
+                    "keberangkatan": waktu_berangkat
+                }
+            }
+        }
+
+        return Response(response_data)
+
+    except Pemesanan.DoesNotExist:
+        return Response({"success": False, "error": "Order tidak ditemukan"}, status=404)
+    except Exception as e:
+        return Response({"success": False, "error": str(e)}, status=500)
+    
+@csrf_exempt
+@api_view(['POST'])
+@authentication_classes([CsrfExemptSessionAuthentication, BasicAuthentication])
+@permission_classes([IsAuthenticated])
+def cancel_order(request, order_id):
+    try:
+        # tiket pending
+        pemesanan = Pemesanan.objects.get(id=order_id, pembeli=request.user, status_pembayaran='pending')
+
+        # ganti pembayaran failed
+        pemesanan.status_pembayaran = 'failed'
+
+        Tiket.objects.filter(pemesanan = pemesanan).delete()
+
+        pemesanan.save()
+
+        return Response({"success": True, "message": "Pesanan dibatalkan, kursi berhasil dilepas."})
+    except Pemesanan.DoesNotExist:
+        return Response({"success": False, "error": "Pesanan tidak ditemukan atau sudah diproses."}, status=404)
+
