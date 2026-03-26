@@ -19,13 +19,13 @@ urlpatterns = [
     path('logout-agent/', auth.logout_agent),
     path('logout-user/', auth.logout_user),
     path('register/', auth.register_user),
-    path('get-csrf/', auth.get_csrf), # Pastikan get_csrf ada di api/auth.py
+    path('get-csrf/', auth.get_csrf), 
 
     # FITUR ADMIN
     path('users/', admin.user_list),
     path('agents/', admin.agent_list),
     path('agents/add/', admin.add_agent),
-    path('agents/<int:agent_id>/delete/', admin.delete_agent), # Pastikan ini ada di api/admin.py
+    path('agents/<int:agent_id>/delete/', admin.delete_agent),
     path("admin/bus/", admin.admin_bus_list_create),
     path("admin/jadwal/", admin.admin_jadwal_list_create),
     path("admin/jadwal/<int:pk>/", admin.admin_jadwal_detail),
