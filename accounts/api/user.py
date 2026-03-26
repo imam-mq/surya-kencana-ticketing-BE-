@@ -87,14 +87,26 @@ def update_user_profile(request, user_id):
 
 @csrf_exempt
 def user_jadwal_list(request):
-    asal = request.GET.get("asal")
-    tujuan = request.GET.get("tujuan")
-    tanggal = request.GET.get("tanggal")
-    qs = Jadwal.objects.select_related("bus").filter(status="active")
-    if asal: qs = qs.filter(asal__icontains=asal)
-    if tujuan: qs = qs.filter(tujuan__icontains=tujuan)
-    if tanggal: qs = qs.filter(waktu_keberangkatan__date=tanggal)
-    return JsonResponse(ScheduleOutSerializer(qs, many=True).data, safe=False)
+    sekarang = timezone.now()
+    # jadwa sudah berjalan tidak ditarik
+    qs = Jadwal.objects.select_related("bus").prefetch_related("tiket_set").filter(
+        status="active",
+        waktu_keberangkatan__gt=sekarang
+    ).order_by("waktu_keberangkatan")
+
+    results = []
+    for sch in qs:
+        data = ScheduleOutSerializer(sch).data
+        # Ambil total terjual dari DTO yang sudah di filter paid/pending
+        total_terjual = data.get('terjual', 0) 
+        kapasitas_bus = sch.bus.total_kursi if sch.bus else 0
+        sisa_kursi  = kapasitas_bus - total_terjual
+
+        data['sisa_kursi'] = sisa_kursi
+        data['is_full'] = sisa_kursi <= 0
+        results.append(data)
+
+    return JsonResponse(results, safe=False)
 
 @csrf_exempt
 def user_jadwal_search(request):
@@ -102,8 +114,16 @@ def user_jadwal_search(request):
     tujuan = request.GET.get("tujuan", "").strip()
     date_str = request.GET.get("tanggal", "").strip()
 
+    #data di ambil dari waktu server
+    sekarang = timezone.now()
+
+    #filter waktu keberangkatan
+    qs =  Jadwal.objects.select_related("bus").prefetch_related("tiket_set").filter(
+        status = "active",
+        waktu_keberangkatan__gt=sekarang
+    )
+
     #pengambilan data tiket
-    qs = Jadwal.objects.select_related("bus").prefetch_related("tiket_set").filter(status="active")
     if asal: qs = qs.filter(asal__icontains=asal)
     if tujuan: qs = qs.filter(tujuan__icontains=tujuan)
     if date_str: 
@@ -115,7 +135,7 @@ def user_jadwal_search(request):
     results = []
     for sch in qs:
         total_terjual = sch.tiket_set.count()
-        kapasitas_bus = sch.bus.total_kursi()
+        kapasitas_bus = sch.bus.total_kursi
         sisa_kursi  = kapasitas_bus - total_terjual
 
         #mengambil DTO

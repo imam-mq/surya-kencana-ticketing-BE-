@@ -126,8 +126,22 @@ def admin_jadwal_list_create(request):
         return Response({"error": "Unauthorized"}, status=403)
 
     if request.method == 'GET':
-        jadwals = Jadwal.objects.select_related('bus').all().order_by('-waktu_keberangkatan')
-        return Response(ScheduleOutSerializer(jadwals, many=True).data)
+        # Admin melihat semua jadwal yang di post termasuk yang sudah berjalan
+        jadwals = Jadwal.objects.select_related('bus').prefetch_related('tiket_set').all().order_by('-waktu_keberangkatan')
+        
+        results = []
+        for sch in jadwals:
+            total_terjual = sch.tiket_set.count()
+            kapasitas_bus = sch.bus.total_kursi if sch.bus else 0
+            sisa_kursi = kapasitas_bus - total_terjual
+
+            data = ScheduleOutSerializer(sch).data
+            data['sisa_kursi'] = sisa_kursi
+            data['is_full'] = sisa_kursi <= 0
+            
+            results.append(data)
+
+        return Response(results)
 
     elif request.method == 'POST':
         serializer = ScheduleInSerializer(data=request.data)
@@ -135,6 +149,8 @@ def admin_jadwal_list_create(request):
             serializer.save()
             return Response(serializer.data, status=201)
         return Response(serializer.errors, status=400)
+
+
 
 @api_view(['GET', 'PUT', 'DELETE'])
 @authentication_classes([CsrfExemptSessionAuthentication])

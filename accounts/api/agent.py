@@ -32,13 +32,32 @@ def agent_jadwal_list(request):
 
     asal = request.GET.get("origin")
     tujuan = request.GET.get("destination")
+
+    sekarang = timezone.now()
     
-    qs = Jadwal.objects.select_related("bus").filter(status="active")
+    qs = Jadwal.objects.select_related("bus").prefetch_related("tiket_set").filter(
+            status="active",
+            waktu_keberangkatan__gt=sekarang
+    )
 
     if asal: qs = qs.filter(asal__icontains=asal)
     if tujuan: qs = qs.filter(tujuan__icontains=tujuan)
 
-    return Response(ScheduleOutSerializer(qs, many=True).data)
+    results = []
+    for sch in qs:
+        data = ScheduleOutSerializer(sch).data
+
+        # mengambil angka yang sudah terjual dari serializers
+        total_terjual = data.get('terjual', 0) 
+        kapasitas_bus = sch.bus.total_kursi if sch.bus else 0
+        sisa_kursi  = kapasitas_bus - total_terjual
+
+        data['sisa_kursi'] = sisa_kursi
+        data['is_full'] = sisa_kursi <= 0
+                
+        results.append(data)
+
+    return Response(results)
 
 # ===================== 2. STATISTIK DASHBOARD =====================
 @api_view(["GET"])
