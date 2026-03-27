@@ -62,9 +62,15 @@ def user_list(request):
     if not is_admin(request.user):
         return Response({"error": "Unauthorized: Hanya Admin"}, status=403)
     
-    # date_join
+    
     users = Pengguna.objects.filter(peran='user').values(
-        'id', 'username', 'email', 'nama_lengkap', 'telepon', 'date_joined'
+        'id', 
+        'username', 
+        'email', 
+        'nama_lengkap', 
+        'telepon', 
+        'date_joined',
+        'is_active' 
     )
     return Response(list(users))
 
@@ -78,6 +84,29 @@ def agent_list(request):
     agents = Pengguna.objects.filter(peran='agent')
     serializer = AgentSerializer(agents, many=True)
     return Response(serializer.data)
+
+
+@api_view(['GET'])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([IsAuthenticated])
+def agent_detail(request, agent_id):
+    
+    if not is_admin(request.user):
+        return Response({"error": "Unauthorized: Hanya Admin"}, status=403)
+    
+    try:
+        agent = Pengguna.objects.values(
+            'id', 'username', 'email', 'nama_lengkap', 'telepon', 'date_joined'
+        ).get(id=agent_id, peran='agent')
+        
+        return Response({
+            "success": True,
+            "data": agent
+        })
+        
+    except Pengguna.DoesNotExist:
+        
+        return Response({"success": False, "error": "Agent dengan ID tersebut tidak ditemukan."}, status=404)
 
 
 

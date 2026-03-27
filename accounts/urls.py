@@ -19,11 +19,13 @@ urlpatterns = [
     path('logout-agent/', auth.logout_agent),
     path('logout-user/', auth.logout_user),
     path('register/', auth.register_user),
+    path('verify-email/', auth.verify_email),
     path('get-csrf/', auth.get_csrf), 
 
     # FITUR ADMIN
-    path('users/', admin.user_list),
-    path('agents/', admin.agent_list),
+    path('admin/users/', admin.user_list),
+    path('admin/agents/', admin.agent_list),
+    path('admin/agents/<int:agent_id>/', admin.agent_detail),
     path('agents/add/', admin.add_agent),
     path('agents/<int:agent_id>/delete/', admin.delete_agent),
     path("admin/bus/", admin.admin_bus_list_create),

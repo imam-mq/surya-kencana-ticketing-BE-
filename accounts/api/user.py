@@ -50,8 +50,17 @@ def user_active_promo(request):
     promos = Promosi.objects.filter(status='active').order_by("-tanggal_mulai")
     return Response(PromoSerializer(promos, many=True).data)
 
-@csrf_exempt
+@api_view(['GET'])
+@authentication_classes([CsrfExemptSessionAuthentication, BasicAuthentication])
+@permission_classes([IsAuthenticated])
 def get_user_profile(request, user_id):
+    # user id
+    if request.user.id != user_id:
+        return JsonResponse({"error": "Akses Ditolak! Anda tidak bisa melihat profil pengguna lain."}, status=403)
+    
+    if request.user.is_staff or getattr(request.user, 'role', '') in ['admin', 'agent']:
+         return JsonResponse({"error": "Akun Admin/Agent tidak diizinkan mengakses portal penumpang."}, status=403)
+
     try:
         user = User.objects.get(id=user_id)
         return JsonResponse({
@@ -67,23 +76,31 @@ def get_user_profile(request, user_id):
     except User.DoesNotExist:
         return JsonResponse({"error": "User tidak ditemukan"}, status=404)
 
-@csrf_exempt
+@api_view(['PUT', 'POST'])
+@authentication_classes([CsrfExemptSessionAuthentication, BasicAuthentication])
+@permission_classes([IsAuthenticated])
 def update_user_profile(request, user_id):
-    if request.method not in ["PUT", "POST"]:
-        return JsonResponse({"error": "Method not allowed"}, status=405)
+    # user id
+    if request.user.id != user_id:
+        return JsonResponse({"error": "Akses Ditolak! Anda tidak bisa mengubah profil pengguna lain."}, status=403)
+
     try:
         user = User.objects.get(id=user_id)
-        data = json.loads(request.body.decode("utf-8"))
+        data = request.data 
+        
         user.username = data.get("nama", user.username)
         user.email = data.get("email", user.email)
         user.alamat = data.get("alamat", user.alamat)
         user.telepon = data.get("noHp", user.telepon)
+        
         if data.get("password"):
             user.password = make_password(data["password"])
+            
         user.save()
-        return JsonResponse({"success": True, "message": "Profil diperbarui"})
+        return JsonResponse({"success": True, "message": "Profil berhasil diperbarui"})
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+    
 
 @csrf_exempt
 def user_jadwal_list(request):

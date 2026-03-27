@@ -1,3 +1,8 @@
+import jwt
+from datetime import timedelta 
+from django.utils import timezone 
+from django.core.mail import send_mail
+from django.conf import settings
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from django.contrib.auth import authenticate, login, logout, get_user_model
@@ -33,6 +38,7 @@ def register_user(request):
         if User.objects.filter(email=data["email"]).exists():
             return JsonResponse({"error": "Email sudah digunakan"}, status=400)
 
+        # user is_active diset False agar tidak bisa login
         user = User.objects.create(
             username=data["email"], 
             nama_lengkap=data["nama"],
@@ -44,10 +50,79 @@ def register_user(request):
             kota_kab=data["kotaKab"],
             telepon=data["noHp"],
             peran="user",
+            is_active=False
         )
-        return JsonResponse({"success": True, "user_id": user.id}, status=201)
+
+        # Token JWT (Berlaku 1 jam)
+        payload = {
+            'user_id': user.id,
+            'exp': timezone.now() + timedelta(hours=1),
+            'type': 'email_verification'
+        }
+        token = jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
+
+        # format Email
+        link_verifikasi = f"http://localhost:3000/verify-email?token={token}"
+        judul_email = "Verifikasi Akun Surya Kencana Anda"
+        pesan_email = f"Halo {user.nama_lengkap},\n\nTerima kasih telah mendaftar di Bus Surya Kencana.\nSilakan klik link di bawah ini untuk mengaktifkan akun Anda:\n\n{link_verifikasi}\n\nLink ini hanya berlaku selama 1 jam.\n\nSalam,\nTim Surya Kencana"
+        
+        # Kirim Email
+        send_mail(
+            judul_email,
+            pesan_email,
+            settings.EMAIL_HOST_USER,
+            [user.email],
+            fail_silently=False,
+        )
+        # ==========================================
+
+        # respon konfimasi user
+        return JsonResponse({
+            "success": True, 
+            "message": "Registrasi berhasil! Silakan cek email Anda untuk verifikasi akun.",
+            "user_id": user.id
+        }, status=201)
+
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+    
+
+# ==========================================
+# VERIVY EMAIL
+# ==========================================
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_email(request):
+    token = request.data.get('token')
+    
+    if not token:
+        return Response({'error': 'Token tidak ditemukan'}, status=400)
+        
+    try:
+        # Bongkar token JWT-nya
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
+        
+        # Pastikan ini benar-benar token verifikasi, bukan token login
+        if payload.get('type') != 'email_verification':
+            return Response({'error': 'Jenis token tidak valid'}, status=400)
+
+        # Cari user berdasarkan ID di dalam token
+        user = User.objects.get(id=payload['user_id'])
+        
+        if user.is_active:
+            return Response({'success': True, 'message': 'Akun Anda sudah aktif. Silakan login.'}, status=200)
+
+        # AKTIFKAN USER
+        user.is_active = True
+        user.save()
+        
+        return Response({'success': True, 'message': 'Email berhasil diverifikasi! Anda sekarang bisa login.'})
+
+    except jwt.ExpiredSignatureError:
+        return Response({'error': 'Link verifikasi sudah kadaluarsa. Silakan daftar ulang atau minta link baru.'}, status=400)
+    except (jwt.InvalidTokenError, User.DoesNotExist):
+        return Response({'error': 'Link verifikasi tidak valid atau rusak.'}, status=400)
 
 # ==========================================
 # 2. LOGIN ADMIN 
