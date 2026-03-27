@@ -145,7 +145,8 @@ def check_session(request):
                 "email": request.user.email
             }
         })
-    return JsonResponse({"isAuthenticated": False}, status=401)
+    
+    return JsonResponse({"isAuthenticated": False}, status=200)
 
 @csrf_exempt
 @require_POST
