@@ -39,7 +39,7 @@ urlpatterns = [
     path("admin/validasi-setoran/<int:pk>/", admin.admin_validasi_setoran),
 
     # FITUR AGENT
-    path("agent/download-tiket-pdf/", download_pdf_views),
+    path("agent-ticket-pdf/", download_pdf_views),
     path('agent/dashboard-stats/', agent.agent_dashboard_stats),
     path("agent/ticket-report/", agent.agent_ticket_report),
     path("agent/commission-report/", agent.agent_commission_report),

@@ -1,6 +1,7 @@
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
+from django.utils import timezone
 from accounts.models import Jadwal
 from accounts.serializers import ScheduleOutSerializer
 from accounts.utils.authenticate import CsrfExemptSessionAuthentication
@@ -13,7 +14,10 @@ def search_schedule(request):
     tujuan = request.query_params.get('tujuan')
     tanggal = request.query_params.get('tanggal') 
 
-    jadwals = Jadwal.objects.filter(status='active').select_related('bus')
+    jadwals = Jadwal.objects.filter(
+        status='active',
+        waktu_keberangkatan__gte=timezone.now()
+    ).select_related('bus').order_by('waktu_keberangkatan')
 
     if asal:
         jadwals = jadwals.filter(asal__icontains=asal)
