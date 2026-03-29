@@ -38,6 +38,18 @@ def register_user(request):
         if User.objects.filter(email=data["email"]).exists():
             return JsonResponse({"error": "Email sudah digunakan"}, status=400)
 
+        no_ktp = data.get("noKtp", "")
+        no_hp = data.get("noHp", "")
+
+        if not no_ktp.isdigit() or len(no_ktp) != 16:
+            return JsonResponse({"error": "Nomor KTP tidak valid! Wajib 16 digit angka."}, status=400)
+
+        if not no_hp.isdigit() or len(no_hp) < 10 or len(no_hp) > 15:
+            return JsonResponse({"error": "Nomor HP tidak valid! Gunakan 10-15 digit angka."}, status=400)
+
+        if User.objects.filter(no_ktp=no_ktp).exists():
+            return JsonResponse({"error": "Nomor KTP ini sudah terdaftar. Silakan gunakan KTP lain atau Login."}, status=400)
+
         # user is_active diset False agar tidak bisa login
         user = User.objects.create(
             username=data["email"], 
