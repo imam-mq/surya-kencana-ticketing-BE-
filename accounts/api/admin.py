@@ -7,6 +7,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from django.shortcuts import get_object_or_404
 
 
 from accounts.models import (
@@ -180,6 +181,30 @@ def admin_jadwal_list_create(request):
         return Response(serializer.errors, status=400)
 
 
+@api_view(['GET', 'PUT', 'DELETE'])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([IsAuthenticated])
+def admin_bus_detail(request, pk):
+    if not is_admin(request.user):
+        return Response({"error": "Unauthorized"}, status=403)
+    bus = get_object_or_404(Bus, pk=pk)
+
+    if request.method == 'GET':
+       
+        return Response(BusSerializer(bus).data)
+
+    elif request.method == 'PUT':
+        serializer = BusSerializer(bus, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
+
+    elif request.method == 'DELETE':
+        # Proses hapus bus
+        bus.delete()
+        return Response({"message": "Bus berhasil dihapus"}, status=204)
+    
 
 @api_view(['GET', 'PUT', 'DELETE'])
 @authentication_classes([CsrfExemptSessionAuthentication])
