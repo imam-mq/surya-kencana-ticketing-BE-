@@ -26,7 +26,7 @@ urlpatterns = [
     path('admin/users/', admin.user_list),
     path('admin/agents/', admin.agent_list),
     path('admin/agents/<int:agent_id>/', admin.agent_detail),
-    path('agents/add/', admin.add_agent),
+    path('admin/agents/add/', admin.add_agent),
     path('agents/<int:agent_id>/delete/', admin.delete_agent),
     path("admin/bus/", admin.admin_bus_list_create),
     path("admin/jadwal/", admin.admin_jadwal_list_create),

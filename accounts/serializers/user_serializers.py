@@ -18,16 +18,22 @@ class AgentSerializer(serializers.ModelSerializer):
         ]
         extra_kwargs = {
             'password': {'write_only': True, 'required': False},
-            'id': {'read_only': True}
+            'id': {'read_only': True},
+            'email': {
+                'error_messages': {
+                    'unique': 'Gagal: Email ini sudah digunakan oleh akun lain.'
+                }
+            },
+            'username': {
+                'error_messages': {
+                    'unique': 'Gagal: Username ini sudah terdaftar.'
+                }
+            }
         }
 
     def create(self, validated_data):
-        password = validated_data.pop('password', None)
-        instance = self.Meta.model(**validated_data)
-        if password:
-            instance.set_password(password)
-        instance.save()
-        return instance
+        user = User.objects.create_user(**validated_data)
+        return user
 
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)

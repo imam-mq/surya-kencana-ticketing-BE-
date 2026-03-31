@@ -87,7 +87,7 @@ def agent_list(request):
     return Response(serializer.data)
 
 
-@api_view(['GET'])
+@api_view(['GET', 'PUT'])
 @authentication_classes([CsrfExemptSessionAuthentication])
 @permission_classes([IsAuthenticated])
 def agent_detail(request, agent_id):
@@ -95,21 +95,52 @@ def agent_detail(request, agent_id):
     if not is_admin(request.user):
         return Response({"error": "Unauthorized: Hanya Admin"}, status=403)
     
+    # filter search data agent
     try:
-        agent = Pengguna.objects.values(
-            'id', 'username', 'email', 'nama_lengkap', 'telepon', 'date_joined'
-        ).get(id=agent_id, peran='agent')
-        
+        agent = Pengguna.objects.get(id=agent_id, peran='agent')
+    except Pengguna.DoesNotExist:
+        return Response({"success": False, "error": "Agent tidak ditemukan."}, status=404)
+
+    # menampilkan data cabang agent
+    if request.method == 'GET':
+        serializer = AgentSerializer(agent)
         return Response({
             "success": True,
-            "data": agent
+            "data": serializer.data
         })
-        
-    except Pengguna.DoesNotExist:
-        
-        return Response({"success": False, "error": "Agent dengan ID tersebut tidak ditemukan."}, status=404)
 
+    # menyimpan hasil update
+    elif request.method == 'PUT':
 
+        email = request.data.get("email", "")
+        username = request.data.get("username", "")
+        no_ktp = request.data.get("no_ktp", "")
+
+        # validasi jika agent update email, username, ktp
+        if email and Pengguna.objects.filter(email=email).exclude(id=agent_id).exists():
+            return Response({"error": "Gagal: Email ini sudah digunakan oleh akun lain."}, status=400)
+            
+        if username and Pengguna.objects.filter(username=username).exclude(id=agent_id).exists():
+            return Response({"error": "Gagal: Username ini sudah terdaftar."}, status=400)
+            
+        if no_ktp and Pengguna.objects.filter(no_ktp=no_ktp).exclude(id=agent_id).exists():
+            return Response({"error": "Gagal: Nomor KTP ini sudah terdaftar."}, status=400)
+        
+        serializer = AgentSerializer(agent, data=request.data, partial=True)
+        
+        if serializer.is_valid():
+            # jika berhasil db update
+            serializer.save()
+            
+            return Response({
+                "success": True, 
+                "message": "Data berhasil diupdate!",
+                "data": serializer.data
+            }, status=200)
+            
+        pesan_error = list(serializer.errors.values())[0][0] if serializer.errors else "Gagal update data"
+        return Response({"error": pesan_error}, status=400)
+    
 
 @api_view(['POST'])
 @authentication_classes([CsrfExemptSessionAuthentication]) 
@@ -118,6 +149,29 @@ def add_agent(request):
     
     if not is_admin(request.user):
         return Response({"error": "Forbidden: Akun Anda bukan Admin"}, status=403)
+
+    data = request.data
+    email = data.get("email", "")
+    no_ktp = data.get("no_ktp", "")
+    telepon = data.get("telepon", "")
+    username = data.get("username", "")
+
+    # VALIDASI FORMAT ANGKA (HP & KTP)
+    if no_ktp and (not no_ktp.isdigit() or len(no_ktp) != 16):
+        return Response({"error": "Nomor KTP tidak valid! Wajib 16 digit angka."}, status=400)
+    
+    if telepon and (not telepon.isdigit() or len(telepon) < 10 or len(telepon) > 15):
+        return Response({"error": "Nomor Telepon tidak valid! Gunakan 10-15 digit angka."}, status=400)
+
+    # validasi data doubel
+    if User.objects.filter(username=username).exists():
+        return Response({"error": "Username sudah digunakan oleh akun lain."}, status=400)
+
+    if User.objects.filter(email=email).exists():
+        return Response({"error": "Email sudah digunakan oleh akun lain."}, status=400)
+        
+    if no_ktp and User.objects.filter(no_ktp=no_ktp).exists():
+        return Response({"error": "Nomor KTP ini sudah terdaftar."}, status=400)
     
     serializer = AgentSerializer(data=request.data)
     if serializer.is_valid():
