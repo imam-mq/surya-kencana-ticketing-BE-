@@ -48,6 +48,7 @@ urlpatterns = [
     path('agent/jadwal/', agent.agent_jadwal_list),
     path("agent/tickets/", agent.agent_ticket_list), 
     path('agent/periode/<int:periode_id>/detail/', agent.agent_periode_detail, name='agent_periode_detail'),
+    path('agen/profil_agent/', agent.profil_agent, name='profil-agent-self'),
 
     # WEB PROFILE & USER
     path('schedule/search/', search_schedule), 

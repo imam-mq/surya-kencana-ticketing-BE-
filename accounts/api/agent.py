@@ -1,29 +1,72 @@
 from collections import defaultdict
 from django.db import transaction
 from django.db.models import Sum, Count, Min, Max
-from rest_framework.decorators import api_view, permission_classes, authentication_classes
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from django.shortcuts import get_object_or_404
 
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+
+# Authentication & Models
 from accounts.utils.authenticate import CsrfExemptSessionAuthentication
 from accounts.models import (
     Jadwal, Tiket, Pemesanan, KomisiAgen, 
     PeriodeKomisi, TransferKomisi, ItemPeriodeKomisi
 )
+
+# Serializers
 from accounts.serializers import (
     ScheduleOutSerializer, AgentBookingSerializer, 
     TiketSerializer, PemesananSerializer, AgentTicketHistorySerializer,
-    AgentCommissionReportSerializer,
+    AgentCommissionReportSerializer, AgentSerializer,
 )
+
+from django.contrib.auth import get_user_model
+User = get_user_model()
 
 # ===================== HELPER =====================
 def _is_agent(user):
     return getattr(user, "peran", None) == "agent"
 
-# ===================== 1. LIHAT JADWAL =====================
+
+# profil Agent
+@api_view(['GET', 'PUT'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([CsrfExemptSessionAuthentication])
+def profil_agent(request):
+    
+    user = request.user
+
+    # profil agent
+    if request.method == 'GET':
+        serializer = AgentSerializer(user)
+        return Response({
+            "success": True,
+            "data": serializer.data
+        })
+    
+    # update data profil agent
+    elif request.method == 'PUT':
+        
+        serializer = AgentSerializer(user, data=request.data, partial=True)
+
+        if serializer.is_valid():
+            # validasi email/no ktp yang doubel
+            email = request.data.get("email")
+            if email and User.objects.filter(email=email).exclude(id=user.id).exists():
+                return Response({"error": "Gagal: Email ini sudah digunakan oleh akun lain."}, status=400)
+            serializer.save()
+            return Response({
+                "success": True,
+                "message": "Prorfil berhasil diperbarui",
+                "data": serializer.data
+            })
+        
+        return Response({"error": "Gagal update profile"}, status=400)
+
+# ===================== LIHAT JADWAL =====================
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def agent_jadwal_list(request):
