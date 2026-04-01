@@ -13,6 +13,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 import json
+from accounts.utils.tokens import generate_reset_token, verify_reset_token
+from accounts.services.email_service import send_password_reset_email
 
 User = get_user_model()
 
@@ -24,7 +26,7 @@ def get_csrf(request):
     return JsonResponse({'csrfToken': get_token(request)})
 
 # ==========================================
-# 1. REGISTER USER 
+# REGISTER USER 
 # ==========================================
 @csrf_exempt
 @require_POST
@@ -100,6 +102,66 @@ def register_user(request):
     
 
 # ==========================================
+# LUPA PASSWORD
+# ==========================================
+@csrf_exempt
+@require_POST
+def request_password_reset(request):
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+        email = data.get("email")
+
+        if not email:
+            return JsonResponse({"error": "Email wajib diisi"}, status=400)
+        user = User.objects.filter(email=email).first()
+
+        if user:
+            # token password
+            token = generate_reset_token(user)
+
+            # konfirmasi email
+            send_password_reset_email(user.email, user.nama_lengkap, token)
+
+        return JsonResponse({
+            "success": True, 
+            "message": "Silahkan cek email anda, konfirmasi reset password telah dikirim melalui email Anda."
+        }, status=200)
+    
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+# ==========================================
+# KONFIRMASI PASSWORD
+# ==========================================
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def confirm_password_reset(request):
+    token = request.data.get('token')
+    new_password = request.data.get('newPassword')
+
+    if not token or not new_password:
+        return Response({'error': 'Token dan password baru wajib diisi'}, status=400)
+
+    try:
+        # verivikasi token dengan ID user
+        unverified_payload = jwt.decode(token, options={"verify_signature": False})
+        user = User.objects.get(id=unverified_payload['user_id'])
+
+        #verivikasi token
+        verify_reset_token(token, user)
+
+        # ganti password 
+        user.password = make_password(new_password)
+        user.save()
+
+        return Response({'success': True, 'message': 'Password berhasil diubah! Silakan login.'}, status=200)
+    
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, Exception) as e:
+        return Response({'error': 'Link reset password tidak valid, kadaluarsa, atau sudah pernah digunakan.'}, status=400)
+    
+
+# ==========================================
 # VERIVY EMAIL
 # ==========================================
 
@@ -135,9 +197,10 @@ def verify_email(request):
         return Response({'error': 'Link verifikasi sudah kadaluarsa. Silakan daftar ulang atau minta link baru.'}, status=400)
     except (jwt.InvalidTokenError, User.DoesNotExist):
         return Response({'error': 'Link verifikasi tidak valid atau rusak.'}, status=400)
+    
 
 # ==========================================
-# 2. LOGIN ADMIN 
+# LOGIN ADMIN 
 # ==========================================
 @csrf_exempt
 @require_POST
@@ -161,7 +224,7 @@ def login_admin_api(request):
         return JsonResponse({"error": str(e)}, status=500)
 
 # ==========================================
-# 3. LOGIN AGENT 
+# LOGIN AGENT 
 # ==========================================
 @csrf_exempt
 @require_POST
@@ -190,7 +253,7 @@ def login_agent(request):
         return JsonResponse({"error": str(e)}, status=500)
 
 # ==========================================
-# 4. LOGIN USER 
+# LOGIN USER 
 # ==========================================
 @csrf_exempt
 @require_POST
@@ -218,7 +281,7 @@ def login_user(request):
         return JsonResponse({"error": str(e)}, status=500)
 
 # ==========================================
-# 5. SESSION & LOGOUT
+# SESSION & LOGOUT
 # ==========================================
 @csrf_exempt
 def check_session(request):

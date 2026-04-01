@@ -21,6 +21,8 @@ urlpatterns = [
     path('register/', auth.register_user),
     path('verify-email/', auth.verify_email),
     path('get-csrf/', auth.get_csrf), 
+    path('request-reset-password/', auth.request_password_reset),
+    path('confirm-reset-password/', auth.confirm_password_reset),
 
     # FITUR ADMIN
     path('admin/users/', admin.user_list),
