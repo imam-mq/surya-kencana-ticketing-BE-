@@ -11,6 +11,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
 from django.db import transaction
 from django.utils import timezone
+from django.core.paginator import Paginator, EmptyPage
 
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
@@ -19,6 +20,12 @@ from rest_framework.response import Response
 
 from accounts.models import Jadwal, Tiket, Promosi, Pemesanan
 from accounts.serializers import ScheduleOutSerializer, PromoSerializer
+from accounts.serializers.booking_serializers import UserPesananSayaSerializer
+
+
+from accounts.services.user_pdf_service import generate_user_ticket_pdf, generate_order_ticket_pdf
+from accounts.utils.ticket_tokens import verify_order_download_token
+from accounts.services.email_service import send_order_success_email # <-- webhook
 
 User = get_user_model()
 
@@ -303,13 +310,26 @@ def midtrans_webhook(request):
         pemesanan = Pemesanan.objects.get(id=order_id_db)
 
         if status_transaksi in ['settlement', 'capture']:
-            pemesanan.status_pembayaran = 'success'
+            if pemesanan.status_pembayaran != 'success':
+                pemesanan.status_pembayaran = 'success'
+                pemesanan.save() 
+                
+
+                try:
+                    send_order_success_email(pemesanan)
+                    print(f"Email E-Tiket sukses dikirim ke: {pemesanan.pembeli.email}")
+                except Exception as e:
+                    print(f"Gagal mengirim email E-Tiket: {e}")
+                # -------------------------------------------
+
         elif status_transaksi == 'pending':
             pemesanan.status_pembayaran = 'pending'
+            
         elif status_transaksi in ['expire', 'expired']:
             pemesanan.status_pembayaran = 'expired'
-            # hapus tiket jika gagal pemesanan / tidak jadi bayar
+           
             Tiket.objects.filter(pemesanan=pemesanan).delete()
+            
         elif status_transaksi in ['cancel', 'deny', 'failure']:
             pemesanan.status_pembayaran = 'failed'
             Tiket.objects.filter(pemesanan=pemesanan).delete()
@@ -391,3 +411,100 @@ def cancel_order(request, order_id):
     except Pemesanan.DoesNotExist:
         return Response({"success": False, "error": "Pesanan tidak ditemukan atau sudah diproses."}, status=404)
 
+@api_view(['GET'])
+@authentication_classes([CsrfExemptSessionAuthentication, BasicAuthentication])
+@permission_classes([IsAuthenticated])
+def user_pesanan_list(request):
+    """
+    Endpoint untuk menyuplai data ke halaman 'Pesanan Saya' di React.
+    Mendukung Pagination (?page=1&per_page=10).
+    """
+
+    # mengambil data tiket user dengan query di bawah ini
+    queryset = Tiket.objects.filter(
+        pemesanan__pembeli=request.user,
+        pemesanan__peran_pembeli='user'
+    ).select_related(
+        'jadwal', 'pemesanan', 'pemesanan__pembeli'
+    ).order_by('-pemesanan__dibuat_pada', 'nomor_kursi')
+
+    # parameter page 
+    try:
+        page_number = int(request.GET.get('page', 1))
+        per_page = int(request.GET.get('per_page', 10))
+    except ValueError:
+        page_number = 1
+        per_page = 10
+
+    # proses data
+    paginator = Paginator(queryset, per_page)
+    try:
+        page_obj = paginator.page(page_number)
+    except EmptyPage:
+        page_obj = []
+    # mengubah format JSON 
+    serializer = UserPesananSayaSerializer(page_obj, many=True)
+
+    # status pada halaman pesanan saya
+    data_list = serializer.data
+    for item in data_list:
+        if item.get('status') == 'success':
+            item['status'] = 'PAID'
+        elif item.get('status'):
+            item['status'] = item['status'].upper()
+
+    # respon data 
+    return Response({
+        "data": data_list,
+        "total": paginator.count
+    })
+
+
+@api_view(["GET"])
+@authentication_classes([CsrfExemptSessionAuthentication, BasicAuthentication])
+@permission_classes([IsAuthenticated])
+def download_user_ticket(request, ticket_id):
+    """
+    Endpoint JWT untuk mendownload tiket (PDF) dari halaman Pesanan Saya
+    """
+    try:
+        # Cetak Tiket PDF
+        response = generate_user_ticket_pdf(ticket_id, request.user)
+        return response
+    except PermissionError as e:
+        return Response({"error": str(e)}, status=403)
+    except ValueError as e:
+        return Response({"error": str(e)}, status=400)
+    except Exception as e:
+        return Response({"error": "Terjadi kesalahan pada server saat mencetak tiket."}, status=500)
+    
+@api_view(["GET"])
+@permission_classes([AllowAny]) # <-- SANGAT PENTING: Jangan pakai IsAuthenticated!
+def download_ticket_via_email(request):
+    """
+    Endpoint untuk link yang diklik dari email. (Signed URL)
+    Menggunakan validasi token, bukan JWT/Session.
+    """
+    token = request.GET.get('token')
+    
+    if not token:
+        return JsonResponse({"error": "Token tidak ditemukan dalam URL."}, status=400)
+
+    # 1. Validasi Token dari utilitas yang kita buat
+    order_id, error_msg = verify_order_download_token(token)
+    
+    if error_msg:
+        # Jika token rusak atau bus sudah berangkat, tolak aksesnya
+        return JsonResponse({"error": error_msg}, status=403)
+
+    try:
+        # 2. Ambil data pesanan HANYA berdasarkan ID dari Token yang valid
+        pemesanan = Pemesanan.objects.select_related('jadwal', 'jadwal__bus', 'pembeli').get(id=order_id)
+        
+        # 3. Cetak PDF Gabungan
+        return generate_order_ticket_pdf(pemesanan)
+        
+    except Pemesanan.DoesNotExist:
+        return JsonResponse({"error": "Data pesanan tidak ditemukan di database."}, status=404)
+    except Exception as e:
+        return JsonResponse({"error": f"Terjadi kesalahan internal: {str(e)}"}, status=500)

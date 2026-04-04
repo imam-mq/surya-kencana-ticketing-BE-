@@ -67,4 +67,7 @@ urlpatterns = [
     path('midtrans-webhook/', csrf_exempt(user.midtrans_webhook), name='midtrans_webhook'),
     path('check-payment/<int:order_id>/', user.check_payment_status, name='check_payment_status'),
     path('order/<int:order_id>/cancel/', user.cancel_order, name='cancel_order'),
+    path('user/pesanan-saya/', user.user_pesanan_list),
+    path('ticket/<int:ticket_id>/download/', user.download_user_ticket),
+    path('order/download_email/', user.download_ticket_via_email),
 ]
