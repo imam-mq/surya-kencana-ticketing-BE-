@@ -421,12 +421,17 @@ def user_pesanan_list(request):
     """
 
     # mengambil data tiket user dengan query di bawah ini
-    queryset = Tiket.objects.filter(
-        pemesanan__pembeli=request.user,
-        pemesanan__peran_pembeli='user'
+    queryset = Pemesanan.objects.filter(
+        pembeli=request.user,
+        peran_pembeli='user'
+    ).exclude(
+       
+        status_pembayaran__in=['failed', 'expired', 'cancel', 'deny'] 
     ).select_related(
-        'jadwal', 'pemesanan', 'pemesanan__pembeli'
-    ).order_by('-pemesanan__dibuat_pada', 'nomor_kursi')
+        'jadwal', 'jadwal__bus' 
+    ).prefetch_related(
+        'tiket'  
+    ).order_by('-dibuat_pada')
 
     # parameter page 
     try:
@@ -448,10 +453,11 @@ def user_pesanan_list(request):
     # status pada halaman pesanan saya
     data_list = serializer.data
     for item in data_list:
-        if item.get('status') == 'success':
+        raw_status = item.get('status', '').lower()
+        if raw_status in ['success', 'settlement', 'capture']:
             item['status'] = 'PAID'
-        elif item.get('status'):
-            item['status'] = item['status'].upper()
+        else:
+            item['status'] = raw_status.upper() or "PENDING"
 
     # respon data 
     return Response({
@@ -463,23 +469,29 @@ def user_pesanan_list(request):
 @api_view(["GET"])
 @authentication_classes([CsrfExemptSessionAuthentication, BasicAuthentication])
 @permission_classes([IsAuthenticated])
-def download_user_ticket(request, ticket_id):
-    """
-    Endpoint JWT untuk mendownload tiket (PDF) dari halaman Pesanan Saya
-    """
+def download_user_ticket(request, order_id):
     try:
-        # Cetak Tiket PDF
-        response = generate_user_ticket_pdf(ticket_id, request.user)
-        return response
-    except PermissionError as e:
-        return Response({"error": str(e)}, status=403)
-    except ValueError as e:
-        return Response({"error": str(e)}, status=400)
+        # GET data pemesan
+        pemesanan = Pemesanan.objects.select_related('jadwal', 'jadwal__bus').get(
+            id=order_id, 
+            pembeli=request.user
+        )
+
+        # validasi apakah sudah bayar
+        if pemesanan.status_pembayaran not in ['success', 'PAID']:
+            return Response({"error": "Tiket anda hanya bisa dicetak jika status PAID/sudah dibayar"}, status=400)
+        from accounts.services.user_pdf_service import generate_order_ticket_pdf 
+        return generate_order_ticket_pdf(pemesanan)
+    
+    except Pemesanan.DoesNotExist:
+        return Response({"error": "Pesanan tidak ditemukan atau akses ditolak."}, status=404)
     except Exception as e:
+        
+        print(f"--- ERROR CETAK TIKET ---: {str(e)}") 
         return Response({"error": "Terjadi kesalahan pada server saat mencetak tiket."}, status=500)
     
 @api_view(["GET"])
-@permission_classes([AllowAny]) # <-- SANGAT PENTING: Jangan pakai IsAuthenticated!
+@permission_classes([AllowAny])
 def download_ticket_via_email(request):
     """
     Endpoint untuk link yang diklik dari email. (Signed URL)
@@ -490,7 +502,7 @@ def download_ticket_via_email(request):
     if not token:
         return JsonResponse({"error": "Token tidak ditemukan dalam URL."}, status=400)
 
-    # 1. Validasi Token dari utilitas yang kita buat
+    
     order_id, error_msg = verify_order_download_token(token)
     
     if error_msg:
@@ -498,10 +510,10 @@ def download_ticket_via_email(request):
         return JsonResponse({"error": error_msg}, status=403)
 
     try:
-        # 2. Ambil data pesanan HANYA berdasarkan ID dari Token yang valid
+        
         pemesanan = Pemesanan.objects.select_related('jadwal', 'jadwal__bus', 'pembeli').get(id=order_id)
         
-        # 3. Cetak PDF Gabungan
+        # Cetak PDF Gabungan
         return generate_order_ticket_pdf(pemesanan)
         
     except Pemesanan.DoesNotExist:

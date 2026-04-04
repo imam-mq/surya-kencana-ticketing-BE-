@@ -66,28 +66,46 @@ class AgentTicketHistorySerializer(serializers.ModelSerializer):
 
 class UserPesananSayaSerializer(serializers.ModelSerializer):
     tanggal = serializers.SerializerMethodField()
-    no_kursi = serializers.CharField(source='nomor_kursi', read_only=True)
     keberangkatan = serializers.CharField(source='jadwal.asal', read_only=True)
     kedatangan = serializers.CharField(source='jadwal.tujuan', read_only=True)
-    jenis_kelamin = serializers.CharField(source='jenis_kelamin_penumpang', read_only=True)
-    nama = serializers.CharField(source='nama_penumpang', read_only=True)
+    status = serializers.CharField(source='status_pembayaran', read_only=True)
+    
+    # Field gabungan
+    no_kursi = serializers.SerializerMethodField()
+    jumlah_penumpang = serializers.SerializerMethodField()
     email = serializers.SerializerMethodField()
-    kontak = serializers.CharField(source='telepon_penumpang', read_only=True)
-    status = serializers.CharField(source='pemesanan.status_pembayaran', read_only=True)
+    
+    # get data penumpang
+    nama = serializers.SerializerMethodField()
+    jenis_kelamin = serializers.SerializerMethodField()
+    kontak = serializers.SerializerMethodField()
 
     class Meta:
-        model = Tiket
+        model = Pemesanan 
         fields = [
-            'id', 'tanggal', 'no_kursi', 'keberangkatan', 'kedatangan', 'jenis_kelamin',
-            'nama', 'email', 'kontak', 'status'
+            'id', 'tanggal', 'no_kursi', 'keberangkatan', 'kedatangan', 
+            'jumlah_penumpang', 'email', 'status', 'harga_akhir',
+            
+            'nama', 'jenis_kelamin', 'kontak'
         ]
 
     def get_tanggal(self, obj):
-        # menyeduaikan tanggal pemesanan
         return obj.jadwal.waktu_keberangkatan.strftime('%d %b %Y %H:%M')
-    
+        
+    def get_no_kursi(self, obj):
+        return ", ".join([t.nomor_kursi for t in obj.tiket.all().order_by('nomor_kursi')])
+        
+    def get_jumlah_penumpang(self, obj):
+        return obj.tiket.count()
+        
     def get_email(self, obj):
-        # ambil data email dari model tiket
-        if obj.pemesanan and obj.pemesanan.pembeli:
-            return obj.pemesanan.pembeli.email
-        return "-"
+        return obj.pembeli.email if obj.pembeli else "-"
+        
+    def get_nama(self, obj):
+        return ", ".join([t.nama_penumpang for t in obj.tiket.all()])
+
+    def get_jenis_kelamin(self, obj):
+        return ", ".join([t.jenis_kelamin_penumpang for t in obj.tiket.all()])
+
+    def get_kontak(self, obj):
+        return ", ".join([t.telepon_penumpang for t in obj.tiket.all()])
