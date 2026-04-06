@@ -217,8 +217,12 @@ def user_create_order(request):
             promosi = Promosi.objects.get(id=promosi_id, status='active')
             hari_ini = timezone.now().date()
             if promosi.tanggal_mulai <= hari_ini <= promosi.tanggal_selesai:
-                # Gunakan pembulatan bulat murni
-                jumlah_diskon = (total_harga * promosi.persen_diskon) // 100
+                # 1. Hitung diskon dasar dari persentase
+                diskon_potensial = (total_harga * promosi.persen_diskon) // 100
+                
+                # 2. Bandingkan dengan MAKSIMAL DISKON dari database
+                # Kita ambil mana yang lebih kecil agar tidak melebihi batas
+                jumlah_diskon = min(diskon_potensial, promosi.maksimal_diskon)
             else:
                 return Response({'error': 'Masa berlaku promo habis'}, status=400)
 

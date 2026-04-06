@@ -8,6 +8,8 @@ from django.db.models import Q
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
+from accounts.services.promo_service import get_promo_and_history
+from accounts.serializers.promo_serializers import PromoDetailReportSerializer
 
 
 from accounts.models import (
@@ -357,6 +359,29 @@ def admin_promo_list_create(request):
             serializer.save()
             return Response(serializer.data, status=201)
         return Response(serializer.errors, status=400)
+    
+
+# ================= ADMIN PROMO DETAIL PEMBELIAN USER =================
+@api_view(['GET'])
+@authentication_classes([CsrfExemptSessionAuthentication])
+@permission_classes([IsAuthenticated])
+def admin_promo_report(request, promo_id):
+    """
+    Endpoint khusus untuk menampilkan Dashboard Detail Promo 
+    lengkap dengan riwayat penggunanya.
+    """
+
+    if not is_admin(request.user):
+        return Response({"error": "Unauthorized"}, status=403)
+    promo, purchases = get_promo_and_history(promo_id)
+
+    if not promo:
+        return Response({"error": "Promo tidak ditemukan"}, status=404)
+    
+    serializer = PromoDetailReportSerializer(promo, context={'purchases_history': purchases})
+
+    return Response(serializer.data)
+
     
 @api_view(['GET', 'PUT', 'DELETE'])
 @authentication_classes([CsrfExemptSessionAuthentication])

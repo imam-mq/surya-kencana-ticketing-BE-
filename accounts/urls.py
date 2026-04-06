@@ -36,6 +36,7 @@ urlpatterns = [
     path("admin/jadwal/<int:pk>/", admin.admin_jadwal_detail),
     path("admin/promo/", admin.admin_promo_list_create),
     path("admin/promo/<int:promo_id>/", admin.admin_promo_detail),
+    path('admin/promo/<int:promo_id>/report/', admin.admin_promo_report),
     path("admin/jadwal/<int:pk>/detail-penumpang/", admin.admin_detail_jadwal_penumpang),
     path('admin/laporan-transaksi/', admin.admin_laporan_transaksi, name='admin_laporan_transaksi'),
     path('admin/laporan-transaksi/<int:pk>/detail/', admin.admin_laporan_transaksi_detail),

@@ -27,6 +27,7 @@ class Promosi(models.Model):
     nama = models.CharField(max_length=255)
     deskripsi = models.TextField(null=True, blank=True)
     persen_diskon = models.IntegerField()
+    maksimal_diskon = models.IntegerField(default=20000)
     tanggal_mulai = models.DateField()
     tanggal_selesai = models.DateField()
     status = models.CharField(max_length=20, default='active')
