@@ -262,8 +262,6 @@ def login_user(request):
         data = json.loads(request.body.decode("utf-8"))
         email = data.get("email") 
         password = data.get("password")
-
-        # menggunakan username=email'
         user = authenticate(request, username=email, password=password)
         
         if user is not None and getattr(user, "peran", None) == "user":
@@ -273,12 +271,17 @@ def login_user(request):
                 "id": user.id,
                 "message": "Login berhasil", 
                 "email": user.email, 
-                "peran": user.peran
+                "peran": user.peran,
+                "nama": getattr(user, "nama_lengkap", user.username), 
+                "nik": getattr(user, "no_ktp", ""),
+                "telepon": getattr(user, "telepon", ""),
+                "gender": getattr(user, "jenis_kelamin", "")
             })
         
         return JsonResponse({"success": False, "message": "Email atau Password salah"}, status=401)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+    
 
 # ==========================================
 # SESSION & LOGOUT
@@ -286,17 +289,23 @@ def login_user(request):
 @csrf_exempt
 def check_session(request):
     if request.user.is_authenticated:
+        user = request.user 
+        
         return JsonResponse({
             "isAuthenticated": True,
             "user": {
-                "id": request.user.id,
-                "username": request.user.username,
-                "peran": getattr(request.user, "peran", "user"),
-                "email": request.user.email
+                "id": user.id,
+                "peran": getattr(user, "peran", "user"),
+                "email": user.email,
+                "nama": getattr(user, "nama_lengkap", user.username),
+                "nik": getattr(user, "no_ktp", ""), 
+                "telepon": getattr(user, "telepon", ""), 
+                "gender": getattr(user, "jenis_kelamin", "")
             }
         })
     
     return JsonResponse({"isAuthenticated": False}, status=200)
+
 
 @csrf_exempt
 @require_POST

@@ -1,6 +1,7 @@
 import json
 import math
 import uuid
+import re
 import midtransclient
 from datetime import datetime
 from django.conf import settings
@@ -70,9 +71,11 @@ def get_user_profile(request, user_id):
 
     try:
         user = User.objects.get(id=user_id)
+        nama_asli = getattr(user, "nama_lengkap", "")
+        nama_final = nama_asli if nama_asli else user.username
         return JsonResponse({
             "id": user.id,
-            "nama": user.username,
+            "nama": nama_final,
             "email": user.email,
             "noKtp": getattr(user, "no_ktp", ""),
             "jenisKelamin": getattr(user, "jenis_kelamin", ""),
@@ -87,27 +90,36 @@ def get_user_profile(request, user_id):
 @authentication_classes([CsrfExemptSessionAuthentication, BasicAuthentication])
 @permission_classes([IsAuthenticated])
 def update_user_profile(request, user_id):
-    # user id
-    if request.user.id != user_id:
+    # Verifikasi Hak Akses
+    if request.user.id != int(user_id):
         return JsonResponse({"error": "Akses Ditolak! Anda tidak bisa mengubah profil pengguna lain."}, status=403)
 
     try:
         user = User.objects.get(id=user_id)
         data = request.data 
-        
-        user.username = data.get("nama", user.username)
-        user.email = data.get("email", user.email)
+        user.nama_lengkap = data.get("nama", user.nama_lengkap) # Simpan ke nama_lengkap, bukan username
         user.alamat = data.get("alamat", user.alamat)
         user.telepon = data.get("noHp", user.telepon)
         
+        user.no_ktp = data.get("noKtp", user.no_ktp)
+        user.jenis_kelamin = data.get("jenisKelamin", user.jenis_kelamin)
+        user.kota_kab = data.get("kotaKab", user.kota_kab)
+        if "email" in data and data["email"]:
+            user.email = data["email"]
+            user.username = data["email"] 
+
         if data.get("password"):
             user.password = make_password(data["password"])
             
         user.save()
         return JsonResponse({"success": True, "message": "Profil berhasil diperbarui"})
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
     
+    except User.DoesNotExist:
+        return JsonResponse({"error": "Pengguna tidak ditemukan."}, status=404)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)  
+
+
 
 @csrf_exempt
 def user_jadwal_list(request):
@@ -205,6 +217,24 @@ def user_create_order(request):
     penumpang_list = data.get('penumpang') 
     promosi_id = data.get('promosi_id')
 
+    if not penumpang_list:
+        return Response({'error': 'Data Penumpang Tidak Boleh Kosong'}, status=400)
+    for p in penumpang_list:
+        nik = p.get('nik', '')
+        telepon = p.get('telepon', '')
+        nama = p.get('nama', 'Penumpang')
+        if not re.match(r'^[0-9]{16}$', nik):
+            return Response({'error': f'NIK untuk {nama} tidak valid! Harus 16 digit angka.'}, status=400)
+        if not re.match(r'^08[0-9]{8,11}$', telepon):
+            return Response({'error': f'Nomor telepon untuk {nama} tidak valid!'}, status=400)
+
+        # Cek NIK (NIK hanya berisi 16)
+        if not re.match(r'^[0-9]{16}$', nik):
+            return Response({'error': f'NIK untuk {nama} tidak valid! Harus berupa 16 digit angka.'}, status=400)
+        # Cek telepon
+        if not re.match(r'^08[0-9]{8,11}$', telepon):
+            return Response({'error': f'Nomor telepon untuk {nama} tidak valid! Harus diawali 08 (10-13 digit).'}, status=400)
+
     try:
         jadwal = Jadwal.objects.get(id=jadwal_id)
         harga_per_tiket = int(jadwal.harga) 
@@ -238,12 +268,19 @@ def user_create_order(request):
             for p in penumpang_list:
                 if Tiket.objects.filter(jadwal=jadwal, nomor_kursi=p['kursi']).exists():
                     raise Exception(f"Kursi {p['kursi']} sudah dipesan orang lain.")
+                if Tiket.objects.filter(jadwal=jadwal, ktp_penumpang=p['nik']).exists():
+                    raise Exception(f"Gagal! NIK {p['nik']} sudah terdaftar di perjalanan ini. Mohon gunakan NIK lain.")
                 
                 kode_unik = f"TKT-{timezone.now().strftime('%y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
                 Tiket.objects.create(
-                    pemesanan=pemesanan, jadwal=jadwal, nomor_kursi=p['kursi'],
-                    kode_tiket=kode_unik, nama_penumpang=p['nama'], ktp_penumpang=p['nik'],
-                    telepon_penumpang=p.get('telepon', ''), jenis_kelamin_penumpang=p.get('gender', '')
+                    pemesanan=pemesanan, 
+                    jadwal=jadwal, 
+                    nomor_kursi=p['kursi'],
+                    kode_tiket=kode_unik, 
+                    nama_penumpang=p['nama'], 
+                    ktp_penumpang=p['nik'],
+                    telepon_penumpang=p.get('telepon', ''), 
+                    jenis_kelamin_penumpang=p.get('gender', '')
                 )
 
             snap = midtransclient.Snap(
