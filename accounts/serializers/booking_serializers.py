@@ -1,3 +1,4 @@
+import re
 from rest_framework import serializers
 from accounts.models import Pemesanan, Tiket
 from .master_serializers import ScheduleOutSerializer
@@ -22,10 +23,48 @@ class PemesananSerializer(serializers.ModelSerializer):
             'jumlah_diskon', 'harga_akhir', 'dibuat_pada', 'tiket'
         ]
 
+class PassengerDetailSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255)
+    no_ktp = serializers.CharField(max_length=16)
+    phone = serializers.CharField(max_length=15)
+    gender = serializers.CharField(max_length=20)
+    seat = serializers.CharField(max_length=10)
+
+    def validate_no_ktp(self, value):
+        if not re.match(r'^[0-9]{16}$', value):
+            raise serializers.ValidationError("NIK Harus Berupa 16 Digit")
+        return value
+    def validate_phone(self, value):
+        if not re.match(r'^08[0-9]{8,11}$', value):
+            raise serializers.ValidationError("Nomor telepon tidak valid (Gunakan format 08xx).")
+        return value
+    
+
+
 class AgentBookingSerializer(serializers.Serializer):
     jadwal_id = serializers.IntegerField()
-    seats = serializers.ListField(child=serializers.CharField())
-    passengers = serializers.ListField(child=serializers.DictField())
+    # Ubah passengers menjadi memanggil kelas di atas
+    passengers = PassengerDetailSerializer(many=True) 
+
+    def validate(self, data):
+        jadwal_id = data.get('jadwal_id')
+        passengers = data.get('passengers', [])
+        
+        nik_set = set()
+        for p in passengers:
+            nik = p.get('no_ktp')
+            
+            # 1. Cek duplikat NIK dalam 1 pesanan (Jaga-jaga kalau lolos dari FE)
+            if nik in nik_set:
+                raise serializers.ValidationError(f"NIK {nik} diinput lebih dari satu kali!")
+            nik_set.add(nik)
+
+            # 2. Cek duplikat NIK di Database untuk jadwal bus yang sama
+            if Tiket.objects.filter(jadwal_id=jadwal_id, ktp_penumpang=nik).exists():
+                raise serializers.ValidationError(f"Penumpang dengan NIK {nik} sudah memiliki tiket di bus ini.")
+        
+        return data
+
 
 class AgentTicketHistorySerializer(serializers.ModelSerializer):
     bus_name = serializers.CharField(source='jadwal.bus.nama', read_only=True)
