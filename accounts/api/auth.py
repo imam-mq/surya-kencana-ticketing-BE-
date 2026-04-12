@@ -34,7 +34,7 @@ def register_user(request):
     try:
         data = json.loads(request.body.decode("utf-8"))
         required = ["nama", "email", "password", "noKtp", "jenisKelamin", "alamat", "kotaKab", "noHp"]
-        if not all(data.get(k) for k in required):
+        if not all(k in data and data[k] not in [None, ''] for k in required):
             return JsonResponse({"error": "Semua field wajib diisi"}, status=400)
 
         if User.objects.filter(email=data["email"]).exists():
