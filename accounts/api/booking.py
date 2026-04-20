@@ -19,37 +19,31 @@ def create_booking_agent(request):
     if getattr(request.user, 'peran', 'user') != 'agent':
         return Response({"error": "Hanya Agent yang boleh akses ini"}, status=403)
 
-    # Validasi Input
+    # Validasi Input via Serializer
     serializer = AgentBookingSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(serializer.errors, status=400)
 
     data = serializer.validated_data
-    seats = data['seats']
     passengers = data['passengers']
-
-    if len(seats) != len(passengers):
-        return Response({"error": "Jumlah kursi dan penumpang tidak sama"}, status=400)
+    seats = [p.get('seat') for p in passengers]
 
     try:
-        # Pindahkan pencarian jadwal ke DALAM transaksi atomic
         with transaction.atomic():
-            # 1. Kunci baris jadwal di database sementara proses ini berjalan (Cegah Double Booking)
+            # baris jadwal
             jadwal = get_object_or_404(Jadwal.objects.select_for_update(), pk=data['jadwal_id'])
 
-            # 2. Validasi Waktu: Pastikan bus belum berangkat
+            # Validasi Waktu
             if jadwal.waktu_keberangkatan < timezone.now():
-                return Response({"error": "Gagal! Bus ini sudah berangkat atau jadwal kadaluwarsa."}, status=400)
+                return Response({"error": "Gagal! Bus sudah berangkat."}, status=400)
 
-            # 3. Cek Ketersediaan Kursi
+            # Cel Ketersediaan Kursi
             booked_seats = Tiket.objects.filter(jadwal=jadwal, nomor_kursi__in=seats).exists()
             if booked_seats:
-                return Response({"error": "Maaf, kursi sudah terisi! Silakan pilih kursi lain."}, status=400)
+                return Response({"error": "Maaf, satu atau lebih kursi yang dipilih baru saja terisi!"}, status=400)
 
-            # Hitung Harga
             total_harga = jadwal.harga * len(seats)
             
-            # Buat Booking
             pemesanan = Pemesanan.objects.create(
                 pembeli=request.user,
                 peran_pembeli='agent',
@@ -60,7 +54,6 @@ def create_booking_agent(request):
                 harga_akhir=total_harga
             )
 
-            # Ambil Persen Komisi
             try:
                 persen_komisi = request.user.profil_agen.persen_komisi
             except:
@@ -68,7 +61,7 @@ def create_booking_agent(request):
 
             list_tiket = []
             
-            # Loop Tiket & Komisi
+            
             for i, seat_num in enumerate(seats):
                 pax = passengers[i]
                 kode_unik = f"TKT-{timezone.now().strftime('%y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
@@ -77,17 +70,16 @@ def create_booking_agent(request):
                     pemesanan=pemesanan,
                     jadwal=jadwal,
                     nomor_kursi=seat_num,
-                    nama_penumpang=pax.get('nama', 'Tanpa Nama'),
-                    ktp_penumpang=pax.get('ktp', '-'),
-                    telepon_penumpang=pax.get('hp', '-'),
-                    jenis_kelamin_penumpang=pax.get('jk', 'L'),
+                    nama_penumpang=pax.get('name', 'Tanpa Nama'), # key 'name'
+                    ktp_penumpang=pax.get('no_ktp', '-'),       # key 'no_ktp'
+                    telepon_penumpang=pax.get('phone', '-'),     # key 'phone'
+                    jenis_kelamin_penumpang=pax.get('gender', 'L'), # key 'gender'
                     kode_tiket=kode_unik
                 )
                 list_tiket.append(tiket.kode_tiket)
 
                 # Hitung Komisi
                 nominal_komisi = jadwal.harga * (persen_komisi / 100)
-
                 KomisiAgen.objects.create(
                     agen=request.user,
                     tiket=tiket,
@@ -105,9 +97,7 @@ def create_booking_agent(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
-    
 
-# PERBAIKAN: Ubah chek_payment_status jadi check_payment_status
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def check_payment_status(request, order_id):
