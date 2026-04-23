@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from accounts.services.promo_service import get_promo_and_history
 from accounts.serializers.promo_serializers import PromoDetailReportSerializer
-
+from django.db.models import Sum, Count
 
 from accounts.models import (
     Pengguna, Bus, Jadwal, Promosi, 
@@ -513,8 +513,7 @@ def admin_laporan_transaksi(request):
         elif periode.status == "waiting_validation":
             status_frontend = "MENUNGGU"
 
-        # data unuk bukti transfer
-        transfer = periode.transfer.first() # Mengambil dari relasi related_name='transfer'
+        transfer = periode.transfer.first()
         bukti_url = transfer.bukti_file.url if transfer and transfer.bukti_file else None
 
         data.append({
@@ -567,3 +566,59 @@ def admin_laporan_transaksi_detail(request, pk):
         })
 
     return Response(data)
+
+
+#==================Laporan Total Transaksi=================
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+@authentication_classes([CsrfExemptSessionAuthentication])
+def get_transaksi_user_online(request) :
+    if getattr(request.user, 'peran', 'user') not in ['admin', 'superadmin']:
+        return Response({"error": "Akses Ditolak. Khusus Admin"}, status=403)
+    
+    try:
+        transaksi_qs = Pemesanan.objects.filter(
+            peran_pembeli='user',
+            status_pembayaran = 'success'
+        ).order_by('-id')
+
+        summary = transaksi_qs.aggregate(
+            total_pendapatan=Sum('harga_akhir'),
+            total_transaksi=Count('id')
+        )
+        pendapatan = summary['total_pendapatan'] or 0
+        jumlah_transaksi = summary['total_transaksi'] or 0
+
+        data_transaksi = []
+        total_tiket_terjual = 0
+
+        for t in transaksi_qs:
+            jml_tiket = t.tiket.count()
+            total_tiket_terjual += jml_tiket
+
+            tipe_bus = t.jadwal.bus.nama if t.jadwal and t.jadwal.bus else "Tidak Diketahui"
+            
+            nama_pembeli = str(t.pembeli.nama) if hasattr(t.pembeli, 'nama') else str(t.pembeli)
+
+            data_transaksi.append({
+                "id": t.id,
+                "tanggal_transaksi": t.dibuat_pada.strftime("%d %b %Y") if t.dibuat_pada else "-",
+                "nama_akun": nama_pembeli,
+                "tipe_bus": tipe_bus,
+                "harga": t.harga_akhir or t.total_harga,
+            })
+
+        return Response({
+            "success": True,
+            "data": {
+                "summary": {
+                    "total_pendapatan": pendapatan,
+                    "total_transaksi": jumlah_transaksi,
+                    "total_tiket_terjual": total_tiket_terjual
+                },
+                "transactions": data_transaksi
+            }
+        }, status=200)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
