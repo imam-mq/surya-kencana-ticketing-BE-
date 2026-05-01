@@ -5,7 +5,6 @@ from django.db import models
 # ==========================================
 
 class KomisiAgen(models.Model): 
-    # Gunakan string 'accounts.Pengguna' agar tidak perlu import file auth.py
     agen = models.ForeignKey('accounts.Pengguna', on_delete=models.CASCADE, related_name='komisi')
     tiket = models.OneToOneField('accounts.Tiket', on_delete=models.CASCADE) 
     

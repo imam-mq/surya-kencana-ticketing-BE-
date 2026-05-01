@@ -473,6 +473,16 @@ def admin_validasi_setoran(request, pk):
     
     return Response({"error": "Aksi tidak dikenali"}, status=400)
 
+
+@api_view(['GET'])
+def admin_pending_setoran(request):
+    # hitung jumlah setoran status pending
+    pending = TransferKomisi.objects.filter(status='pending').count()
+    return Response({
+        'success': True,
+        'total_pending': pending
+    })
+
 #==================Laporan Agent Transaksi=================
 
 @api_view(['GET'])

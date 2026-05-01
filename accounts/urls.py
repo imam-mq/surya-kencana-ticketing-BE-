@@ -42,6 +42,7 @@ urlpatterns = [
     path('admin/laporan-transaksi/<int:pk>/detail/', admin.admin_laporan_transaksi_detail),
     path("admin/validasi-setoran/<int:pk>/", admin.admin_validasi_setoran),
     path('admin/transaksi/user-online/', admin.get_transaksi_user_online, name='transaksi-user-online'),
+    path("admin/setoran-pending/", admin.admin_pending_setoran),
 
     # FITUR AGENT
     path("agent-ticket-pdf/", download_pdf_views),
