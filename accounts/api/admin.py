@@ -632,3 +632,51 @@ def get_transaksi_user_online(request) :
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+
+#==================Total Transaksi Pop-Up Detail Informasi=================
+@api_view(['GET'])
+def admin_transaksi_user_online_detail(request, pk):
+    try:
+        pemesanan = Pemesanan.objects.select_related(
+            'pembeli', 'jadwal', 'jadwal__bus'
+        ).prefetch_related('tiket').get(id=pk)
+        
+        jadwal = pemesanan.jadwal
+        bus = jadwal.bus
+        pembeli = pemesanan.pembeli
+        
+        jam_berangkat = jadwal.waktu_keberangkatan.strftime('%H.%M') + " WIB"
+        tanggal_berangkat = jadwal.waktu_keberangkatan.strftime('%d %b %Y')
+        
+        nama_pembeli = getattr(pembeli, 'nama_lengkap', pembeli.username)
+        tiket_list = pemesanan.tiket.all()
+        nomor_kursi = ", ".join([t.nomor_kursi for t in tiket_list]) if tiket_list else "-"
+        
+        # 5. Gabungkan nama bus dan tipenya
+        tipe_bus = f"{bus.nama} {bus.tipe or ''}".strip()
+        
+        data = {
+            "nama_pembeli": nama_pembeli,
+            "email": getattr(pembeli, 'email', '-'),
+            "rute_keberangkatan": jadwal.asal,
+            "rute_kedatangan": jadwal.tujuan,
+            "jam_keberangkatan": jam_berangkat,
+            "tanggal_keberangkatan": tanggal_berangkat,
+            "nomor_kursi": nomor_kursi,
+            "tipe_bus": tipe_bus
+        }
+
+        return Response({
+            "success": True,
+            "data": data
+        })
+    except Tiket.DoesNotExist:
+        return Response({
+            "success": False,
+            "error": "Detail Transaksi Tidak Ditemukan"
+        }, status=404)
+    except Exception as e:
+        return Response({
+            "success": False,
+            "error": str(e)
+        }, status=500)
