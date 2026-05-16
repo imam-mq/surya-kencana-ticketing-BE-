@@ -11,6 +11,7 @@ from django.shortcuts import get_object_or_404
 from accounts.services.promo_service import get_promo_and_history
 from accounts.serializers.promo_serializers import PromoDetailReportSerializer
 from django.db.models import Sum, Count
+from collections import defaultdict
 
 from accounts.models import (
     Pengguna, Bus, Jadwal, Promosi, 
@@ -680,3 +681,52 @@ def admin_transaksi_user_online_detail(request, pk):
             "success": False,
             "error": str(e)
         }, status=500)
+
+#==================Laporan & monitoring -> tiket terjual=================
+@api_view(['GET'])
+def admin_laporan_tiket_terjual(request):
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+
+    # data jadwal
+    jadwals = Jadwal.objects.select_related('bus').all()
+
+    # filter berdasarkan rentang tanggal
+    if start_date and end_date:
+        jadwals = jadwals.filter(waktu_keberangkatan__date__range=[start_date, end_date])
+
+    # hitung tiket lunas setiap jadwal
+    jadwals = jadwals.annotate(
+        tiket_lunas=Count('tiket', filter=Q(tiket__pemesanan__status_pembayaran__in=['paid', 'success']))
+    ).order_by('waktu_keberangkatan')
+
+    grouped_data = defaultdict(list)
+
+    for j in jadwals:
+        tanggal_str = j.waktu_keberangkatan.strftime('%d %b %Y')
+        total_kursi = j.bus.total_kursi
+        terjual = j.tiket_lunas
+        tersedia = max(0, total_kursi - terjual)
+
+        # menghitung presentase
+        persentase_angka = int((terjual / total_kursi) * 100) if total_kursi > 0 else 0
+
+        grouped_data[tanggal_str].append({
+            "jadwal_id": j.id,
+            "rute": f"{j.asal} - {j.tujuan}",
+            "bus": f"{j.bus.nama} [{j.bus.tipe or '-'}]",
+            "totalKursi": total_kursi,
+            "tiketTerjual": terjual,
+            "tiketTersedia": tersedia,
+            "persentase": f"{persentase_angka}%"
+        })
+
+    hasil_akhir = [
+        {"tanggal": tgl, "routes": rute_list} 
+        for tgl, rute_list in grouped_data.items()
+    ]
+
+    return Response({
+        "success": True,
+        "data": hasil_akhir
+    })
